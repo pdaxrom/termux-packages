@@ -331,6 +331,7 @@ gcc_cv_no_pie=no
 EOF
 
     ../"gcc-$GCC_V"/configure "${GCC_CONFIGURE_ARGS[@]}" \
+    --with-pkgversion='pdaXrom Termux packages 1.0' \
     --prefix="$CROSS_PREFIX" \
     --target="$ARM_TARGET" \
     --enable-languages=c,c++,lto \
@@ -522,6 +523,7 @@ EOF
 
     CFLAGS_FOR_TARGET="-O2" CXXFLAGS_FOR_TARGET="-O2" \
         ../"gcc-$GCC_V"/configure \
+        --with-pkgversion='pdaXrom Termux packages 1.0' \
         --prefix="$INSTALL_PATH" \
         --target="$ARM_TARGET" \
         --build="$ARM_BUILD" \

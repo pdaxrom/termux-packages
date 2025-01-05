@@ -16,14 +16,17 @@ IFS=$'\n\t'
 
 TOP_DIR=$PWD
 
-TOOLCHAIN_INST=${TOOLCHAIN_INST:-/data/data/com.termux/files/cctools-toolchain}
+BUILD_TARGET=aarch64-linux-android
 
-SYSROOT=${TOOLCHAIN_INST}/aarch64-linux-android/lib
+TOOLCHAIN_INST=$PREFIX
+
+#SYSROOT=${TOOLCHAIN_INST}/${BUILD_TARGET}/lib
+SYSROOT=$(dirname ${PREFIX})
 
 # Path where the toolchain will be built.
 BUILD_PATH="${BUILD_PATH:-toolchain}"
 
-TMPINST_DIR="$(realpath ${BUILD_PATH}/tmpinst)"
+TMPINST_DIR="$(realpath ${BUILD_PATH})/tmpinst"
 test -d $TMPINST_DIR || mkdir -p $TMPINST_DIR
 
 REPO_DIR=${TOP_DIR}/out-$(uname -m)
@@ -43,19 +46,16 @@ export PATH="$PATH:$INSTALL_PATH/bin"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN)}"
 JOBS="${JOBS:-1}" # If getconf returned nothing, default to 1
 
-JOBS=4
+JOBS=3
 
 # GCC configure arguments to use system GMP/MPC/MFPF
 GCC_CONFIGURE_ARGS=()
 
 # Dependency source libs (Versions)
-BINUTILS_V=2.43.1
 GCC_V=14.2.0
-NEWLIB_V=4.4.0.20231231
 GMP_V=6.3.0 
 MPC_V=1.3.1 
 MPFR_V=4.2.1
-MAKE_V=${MAKE_V:-""}
 
 # Check if a command-line tool is available: status 0 means "yes"; status 1 means "no"
 command_exists () {
@@ -146,20 +146,10 @@ mkdir -p "$BUILD_PATH"
 cd "$BUILD_PATH"
 
 # Dependency downloads and unpack
-test -f "binutils-$BINUTILS_V.tar.gz" || download "https://ftp.gnu.org/gnu/binutils/binutils-$BINUTILS_V.tar.gz"
-test -d "binutils-$BINUTILS_V"        || tar -xzf "binutils-$BINUTILS_V.tar.gz"
-
-patching "binutils-$BINUTILS_V"
-
 test -f "gcc-$GCC_V.tar.gz"           || download "https://ftp.gnu.org/gnu/gcc/gcc-$GCC_V/gcc-$GCC_V.tar.gz"
 test -d "gcc-$GCC_V"                  || tar -xzf "gcc-$GCC_V.tar.gz"
 
 patching "gcc-$GCC_V"
-
-test -f "newlib-$NEWLIB_V.tar.gz"     || download "https://sourceware.org/pub/newlib/newlib-$NEWLIB_V.tar.gz"
-test -d "newlib-$NEWLIB_V"            || tar -xzf "newlib-$NEWLIB_V.tar.gz"
-
-patching "newlib-$NEWLIB_V"
 
 if [ "$GMP_V" != "" ]; then
     test -f "gmp-$GMP_V.tar.bz2"           || download "https://ftp.gnu.org/gnu/gmp/gmp-$GMP_V.tar.bz2"
@@ -194,92 +184,16 @@ if [ "$MPFR_V" != "" ]; then
     popd
 fi
 
-if [ "$MAKE_V" != "" ]; then
-    test -f "make-$MAKE_V.tar.gz"       || download "https://ftp.gnu.org/gnu/make/make-$MAKE_V.tar.gz"
-    test -d "make-$MAKE_V"              || tar -xzf "make-$MAKE_V.tar.gz"
-
-    patching "make-$MAKE_V"
-fi
-
-test -d binutils-build ||  mkdir binutils-build
-pushd binutils-build
-
-if [ ! -e .configured ]; then
-    mkdir bfd binutils
-
-    cat >bfd/config.cache<<EOF
-ac_cv_func_fopen64=no
-ac_cv_func_fseeko64=no
-ac_cv_func_ftello64=no
-EOF
-
-    cat >binutils/config.cache<<EOF
-ac_cv_func_fopen64=no
-ac_cv_func_fseeko64=no
-ac_cv_func_ftello64=no
-EOF
-
-    ../binutils-${BINUTILS_V}/configure \
-    --target=aarch64-linux-android \
-    --prefix=${TOOLCHAIN_INST} \
-    --libexecdir=${TOOLCHAIN_INST}/lib \
-    --enable-bionic-libs \
-    --enable-default-pie \
-    --disable-gprofng \
-    --without-system-zlib \
-    --without-zstd \
-    --enable-targets=arm-linux-androideabi,i686-linux-android,aarch64-linux-android,x86_64-linux-android,mipsel-linux-android,mips64el-linux-android \
-    --enable-multilib \
-    --disable-nls \
-    --disable-werror \
-    LDFLAGS="-Wl,-rpath-link,${SYSROOT}/usr/lib"
-
-    touch .configured
-fi
-
-if [ ! -e .compiled ]; then
-    make -j "$JOBS"
-
-    touch .compiled
-fi
-
-if [ ! -e .installed ]; then
-    make install-strip
-
-    touch .installed
-fi
-
-if [ ! -e .packed ]; then
-    PKG=binutils-cctools
-    PKG_VERSION=$BINUTILS_V
-    PKG_SUBVERSION=
-    PKG_URL="https://mirror.kumi.systems/gnu/binutils/binutils-${PKG_VERSION}.tar.xz"
-    PKG_DESC="GNU assembler, linker and binary utilities"
-    PKG_MAINTAINER="sashz <sashz@pdaXrom.org>"
-    PKG_HOME="https://www.gnu.org/software/binutils/"
-    PKG_DEPS=""
-
-    make install-strip DESTDIR=${TMPINST_DIR}/${PKG}
-
-    pushd ${TMPINST_DIR}/${PKG}/${TOOLCHAIN_INST}/$(uname -m)-linux-android/bin
-    for f in $(find . -type f -exec basename {} \;); do
-        ln -sf ../$(uname -m)-linux-android/bin/$f ../../bin/$(uname -m)-linux-android-$f
-    done
-    cd ../../bin
-
-    for f in aarch64-linux-android-*; do ln -sf $f ${f/aarch64-linux-android-}; done
-
-    popd
-
-    packing
-
-    touch .packed
-fi
-
-popd
-
 test -d gcc-build || mkdir gcc-build
 pushd gcc-build
+
+if [ ! -d ${TOOLCHAIN_INST}/${BUILD_TARGET}/include/android ] && [ ! -e ${TOOLCHAIN_INST}/${BUILD_TARGET}/include/string.h ] && [ ! -e .gcc_inc_fix ]; then
+    mkdir -p ${TOOLCHAIN_INST}/${BUILD_TARGET}/include
+    cp -rf ${TOP_DIR}/fixes/ndk-sysroot/include/android ${TOP_DIR}/fixes/ndk-sysroot/include/string.h ${TOOLCHAIN_INST}/${BUILD_TARGET}/include
+    ln -sf ../../include/${BUILD_TARGET}/asm ${TOOLCHAIN_INST}/${BUILD_TARGET}/include/asm
+
+    touch .gcc_inc_fix
+fi
 
 if [ ! -e .configured ]; then
     mkdir gcc
@@ -288,13 +202,22 @@ if [ ! -e .configured ]; then
 ac_cv_c_bigendian=no
 gcc_cv_c_no_fpie=no
 gcc_cv_no_pie=no
+ac_cv_func_getloadavg=no
+ac_cv_func_aligned_alloc=no
+ac_cv_func_timespec_get=no
 EOF
 
     ../gcc-${GCC_V}/configure \
     --with-pkgversion='pdaXrom Termux packages 1.0' \
-    --target=aarch64-linux-android \
+    --with-gcc-major-version-only \
+    --program-suffix=-${GCC_V/.*} \
+    --build=${BUILD_TARGET} \
+    --host=${BUILD_TARGET} \
+    --target=${BUILD_TARGET} \
     --prefix=${TOOLCHAIN_INST} \
     --libexecdir=${TOOLCHAIN_INST}/lib \
+    --with-sysroot=$SYSROOT \
+    --with-build-sysroot=$SYSROOT \
     --with-gnu-as \
     --with-gnu-ld \
     --enable-languages=c,c++,fortran,objc,obj-c++ \
@@ -323,9 +246,15 @@ EOF
     --enable-default-pie \
     --without-system-zlib \
     --without-zstd \
-    --disable-shared
-
-#    --disable-shared \
+    --disable-shared \
+    CPPFLAGS='-O2 -D__ANDROID_API__=29' \
+    CFLAGS='-O2 -D__ANDROID_API__=29' \
+    CXXFLAGS='-O2 -D__ANDROID_API__=29' \
+    AS="as" \
+    AS_FOR_TARGET="as" \
+    CC="gcc-14" \
+    CXX="g++-14" \
+    CPP="cpp-14"
 
     touch .configured
 fi
@@ -336,40 +265,32 @@ if [ ! -e .compiled ]; then
     touch .compiled
 fi
 
-if [ ! -e .installed ]; then
-    make install-strip
-
-    touch .installed
-fi
-
 if [ ! -e .packed ]; then
-    PKG=gcc-cctools
+    PKG=gcc-android
     PKG_VERSION=$GCC_V
     PKG_SUBVERSION=
-    PKG_URL="http://mirrors.concertpass.com/gcc/releases/gcc-10.3.0/gcc-${PKG_VERSION}.tar.xz"
+    PKG_URL="http://mirrors.concertpass.com/gcc/releases/gcc-${PKG_VERSION}/gcc-${PKG_VERSION}.tar.xz"
     PKG_MAINTAINER="sashz <sashz@pdaXrom.org>"
     PKG_HOME="https://gcc.gnu.org/"
     PKG_DESC="The GNU Compiler Collection"
-    PKG_DEPS="binutils-cctools"
+    PKG_DEPS="binutils | binutils-android, ndk-sysroot"
 
     make install-strip DESTDIR=${TMPINST_DIR}/${PKG}
 
-    pushd ${TMPINST_DIR}/${PKG}/${TOOLCHAIN_INST}/bin
-
-    for f in aarch64-linux-android-*; do ln -sf $f ${f/aarch64-linux-android-}; done
-
-    popd
+    mkdir -p ${TMPINST_DIR}/${PKG}/${TOOLCHAIN_INST}/${BUILD_TARGET}/include
+    cp -rf ${TOP_DIR}/fixes/ndk-sysroot/include/android ${TOP_DIR}/fixes/ndk-sysroot/include/string.h ${TMPINST_DIR}/${PKG}/${TOOLCHAIN_INST}/${BUILD_TARGET}/include
+    ln -sf ../../include/${BUILD_TARGET}/asm ${TMPINST_DIR}/${PKG}/${TOOLCHAIN_INST}/${BUILD_TARGET}/include/asm
 
     packing
 
     touch .packed
 fi
 
-popd
+if [ -e .gcc_inc_fix ]; then
+    rm -rf ${TOOLCHAIN_INST}/${BUILD_TARGET}/include/android ${TOOLCHAIN_INST}/${BUILD_TARGET}/include/string.h ${TOOLCHAIN_INST}/${BUILD_TARGET}/include/asm
 
-pushd ${TOOLCHAIN_INST}/bin
-
-for f in aarch64-linux-android-*; do ln -sf $f ${f/aarch64-linux-android-}; done
+    rm -f .gcc_inc_fix
+fi
 
 popd
 
