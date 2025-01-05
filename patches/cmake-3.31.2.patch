@@ -1,0 +1,418 @@
+diff -Nur zz/cmake-3.31.2/Modules/Platform/Android-Common.cmake cmake-3.31.2/Modules/Platform/Android-Common.cmake
+--- zz/cmake-3.31.2/Modules/Platform/Android-Common.cmake	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Modules/Platform/Android-Common.cmake	2024-12-21 12:38:43.558826603 +0400
+@@ -178,21 +178,21 @@
+     string(APPEND CMAKE_EXE_LINKER_FLAGS_INIT " ${_ANDROID_ABI_INIT_EXE_LDFLAGS}")
+   endif()
+ 
+-  if(DEFINED _ANDROID_STL_EXCEPTIONS)
+-    if(_ANDROID_STL_EXCEPTIONS)
++#  if(DEFINED _ANDROID_STL_EXCEPTIONS)
++#    if(_ANDROID_STL_EXCEPTIONS)
+       string(APPEND CMAKE_${lang}_FLAGS_INIT " -fexceptions")
+-    else()
+-      string(APPEND CMAKE_${lang}_FLAGS_INIT " -fno-exceptions")
+-    endif()
+-  endif()
++#    else()
++#      string(APPEND CMAKE_${lang}_FLAGS_INIT " -fno-exceptions")
++#    endif()
++#  endif()
+ 
+-  if("x${lang}" STREQUAL "xCXX" AND DEFINED _ANDROID_STL_RTTI)
+-    if(_ANDROID_STL_RTTI)
++#  if("x${lang}" STREQUAL "xCXX" AND DEFINED _ANDROID_STL_RTTI)
++#    if(_ANDROID_STL_RTTI)
+       string(APPEND CMAKE_${lang}_FLAGS_INIT " -frtti")
+-    else()
+-      string(APPEND CMAKE_${lang}_FLAGS_INIT " -fno-rtti")
+-    endif()
+-  endif()
++#    else()
++#      string(APPEND CMAKE_${lang}_FLAGS_INIT " -fno-rtti")
++#    endif()
++#  endif()
+ 
+   if("x${lang}" STREQUAL "xCXX")
+     __android_stl(CXX)
+diff -Nur zz/cmake-3.31.2/Modules/Platform/Android-GNU.cmake cmake-3.31.2/Modules/Platform/Android-GNU.cmake
+--- zz/cmake-3.31.2/Modules/Platform/Android-GNU.cmake	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Modules/Platform/Android-GNU.cmake	2024-12-21 11:59:20.294827504 +0400
+@@ -24,6 +24,14 @@
+   return()
+ endif()
+ 
++# Natively compiling on an Android host doesn't use the NDK cross-compilation
++# tools.
++if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Android")
++  macro(__android_compiler_gnu lang)
++  endmacro()
++  return()
++endif()
++
+ include(Platform/Android-Common)
+ 
+ include(Platform/Android/abi-${CMAKE_ANDROID_ARCH_ABI}-GNU)
+diff -Nur zz/cmake-3.31.2/Source/CPack/cmCPackDebGenerator.cxx cmake-3.31.2/Source/CPack/cmCPackDebGenerator.cxx
+--- zz/cmake-3.31.2/Source/CPack/cmCPackDebGenerator.cxx	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Source/CPack/cmCPackDebGenerator.cxx	2024-12-21 10:29:27.354829562 +0400
+@@ -824,7 +824,7 @@
+   if (this->IsOn("GEN_CPACK_DEBIAN_GENERATE_POSTINST")) {
+     cmGeneratedFileStream out;
+     out.Open(postinst, false, true);
+-    out << "#!/bin/sh\n\n"
++    out << "#!/data/data/com.termux/files/usr/bin/sh\n\n"
+            "set -e\n\n"
+            "if [ \"$1\" = \"configure\" ]; then\n"
+            "\tldconfig\n"
+@@ -833,7 +833,7 @@
+   if (this->IsOn("GEN_CPACK_DEBIAN_GENERATE_POSTRM")) {
+     cmGeneratedFileStream out;
+     out.Open(postrm, false, true);
+-    out << "#!/bin/sh\n\n"
++    out << "#!/data/data/com.termux/files/usr/bin/sh\n\n"
+            "set -e\n\n"
+            "if [ \"$1\" = \"remove\" ]; then\n"
+            "\tldconfig\n"
+diff -Nur zz/cmake-3.31.2/Source/cmAffinity.cxx cmake-3.31.2/Source/cmAffinity.cxx
+--- zz/cmake-3.31.2/Source/cmAffinity.cxx	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Source/cmAffinity.cxx	2024-12-21 12:16:43.458827106 +0400
+@@ -33,7 +33,7 @@
+ std::set<size_t> GetProcessorsAvailable()
+ {
+   std::set<size_t> processorsAvailable;
+-#ifdef CM_HAVE_CPU_AFFINITY
++#if defined(CM_HAVE_CPU_AFFINITY) && !defined(__BIONIC__)
+   int cpumask_size = uv_cpumask_size();
+   if (cpumask_size > 0) {
+ #  ifdef _WIN32
+diff -Nur zz/cmake-3.31.2/Source/cmExecProgramCommand.cxx cmake-3.31.2/Source/cmExecProgramCommand.cxx
+--- zz/cmake-3.31.2/Source/cmExecProgramCommand.cxx	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Source/cmExecProgramCommand.cxx	2024-12-21 10:28:01.662829594 +0400
+@@ -206,7 +206,7 @@
+   }
+   fflush(stdout);
+   fflush(stderr);
+-  const char* cmd[] = { "/bin/sh", "-c", command.c_str(), nullptr };
++  const char* cmd[] = { "/data/data/com.termux/files/usr/bin/sh", "-c", command.c_str(), nullptr };
+   cmsysProcess_SetCommand(cp, cmd);
+ #endif
+ 
+diff -Nur zz/cmake-3.31.2/Source/cmGhsMultiTargetGenerator.cxx cmake-3.31.2/Source/cmGhsMultiTargetGenerator.cxx
+--- zz/cmake-3.31.2/Source/cmGhsMultiTargetGenerator.cxx	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Source/cmGhsMultiTargetGenerator.cxx	2024-12-21 10:29:05.422829570 +0400
+@@ -379,7 +379,7 @@
+   std::string shell;
+ #else
+   std::string fext = ".sh";
+-  std::string shell = "/bin/sh ";
++  std::string shell = "/data/data/com.termux/files/usr/bin/sh ";
+ #endif
+ 
+   for (cmCustomCommand const& cc : ccv) {
+diff -Nur zz/cmake-3.31.2/Source/cmGlobalGhsMultiGenerator.cxx cmake-3.31.2/Source/cmGlobalGhsMultiGenerator.cxx
+--- zz/cmake-3.31.2/Source/cmGlobalGhsMultiGenerator.cxx	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Source/cmGlobalGhsMultiGenerator.cxx	2024-12-21 10:28:46.246829577 +0400
+@@ -237,7 +237,7 @@
+ #ifdef _WIN32
+           "cmd.exe"
+ #else
+-          "/bin/sh"
++          "/data/data/com.termux/files/usr/bin/sh"
+ #endif
+           "\"\n"
+           "    options = {\"SpecialOptions\"}\n"
+diff -Nur zz/cmake-3.31.2/Source/cmGlobalXCodeGenerator.cxx cmake-3.31.2/Source/cmGlobalXCodeGenerator.cxx
+--- zz/cmake-3.31.2/Source/cmGlobalXCodeGenerator.cxx	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Source/cmGlobalXCodeGenerator.cxx	2024-12-21 10:28:31.266829583 +0400
+@@ -1743,7 +1743,7 @@
+   buildPhase->AddAttribute("name", this->CreateString(name));
+   buildPhase->AddAttribute("runOnlyForDeploymentPostprocessing",
+                            this->CreateString("0"));
+-  buildPhase->AddAttribute("shellPath", this->CreateString("/bin/sh"));
++  buildPhase->AddAttribute("shellPath", this->CreateString("/data/data/com.termux/files/usr/bin/sh"));
+   this->AddCommandsToBuildPhase(buildPhase, target, commands, name2);
+   return buildPhase;
+ }
+@@ -1985,7 +1985,7 @@
+   }
+   buildPhase->AddAttribute("runOnlyForDeploymentPostprocessing",
+                            this->CreateString("0"));
+-  buildPhase->AddAttribute("shellPath", this->CreateString("/bin/sh"));
++  buildPhase->AddAttribute("shellPath", this->CreateString("/data/data/com.termux/files/usr/bin/sh"));
+   buildPhase->AddAttribute("shellScript", this->CreateString(shellScript));
+   buildPhase->AddAttribute("showEnvVarsInLog", this->CreateString("0"));
+ 
+@@ -2060,7 +2060,7 @@
+   buildPhase->AddAttribute("name", this->CreateString(name));
+   buildPhase->AddAttribute("runOnlyForDeploymentPostprocessing",
+                            this->CreateString("0"));
+-  buildPhase->AddAttribute("shellPath", this->CreateString("/bin/sh"));
++  buildPhase->AddAttribute("shellPath", this->CreateString("/data/data/com.termux/files/usr/bin/sh"));
+   buildPhase->AddAttribute("shellScript", this->CreateString(shellScript));
+   buildPhase->AddAttribute("showEnvVarsInLog", this->CreateString("0"));
+   {
+@@ -3128,7 +3128,7 @@
+   shellBuildPhase->AddAttribute("outputPaths", outputPaths);
+   shellBuildPhase->AddAttribute("runOnlyForDeploymentPostprocessing",
+                                 this->CreateString("0"));
+-  shellBuildPhase->AddAttribute("shellPath", this->CreateString("/bin/sh"));
++  shellBuildPhase->AddAttribute("shellPath", this->CreateString("/data/data/com.termux/files/usr/bin/sh"));
+   shellBuildPhase->AddAttribute(
+     "shellScript", this->CreateString("# shell script goes here\nexit 0"));
+   shellBuildPhase->AddAttribute("showEnvVarsInLog", this->CreateString("0"));
+diff -Nur zz/cmake-3.31.2/Source/cmLocalNinjaGenerator.cxx cmake-3.31.2/Source/cmLocalNinjaGenerator.cxx
+--- zz/cmake-3.31.2/Source/cmLocalNinjaGenerator.cxx	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Source/cmLocalNinjaGenerator.cxx	2024-12-21 10:28:55.986829574 +0400
+@@ -520,7 +520,7 @@
+         cmdLines, outputConfig, commandConfig, customStep, target);
+       std::string cmd
+ #ifndef _WIN32
+-        = "/bin/sh "
++        = "/data/data/com.termux/files/usr/bin/sh "
+ #endif
+         ;
+       cmd += this->ConvertToOutputFormat(
+diff -Nur zz/cmake-3.31.2/Source/cmLocalUnixMakefileGenerator3.cxx cmake-3.31.2/Source/cmLocalUnixMakefileGenerator3.cxx
+--- zz/cmake-3.31.2/Source/cmLocalUnixMakefileGenerator3.cxx	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Source/cmLocalUnixMakefileGenerator3.cxx	2024-12-21 10:29:17.634829565 +0400
+@@ -655,7 +655,7 @@
+     /* clang-format off */
+       makefileStream
+         << "# The shell in which to execute make rules.\n"
+-        << "SHELL = /bin/sh\n"
++        << "SHELL = /data/data/com.termux/files/usr/bin/sh\n"
+         << "\n";
+ /* clang-format on */
+ #endif
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive.h cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive.h
+--- zz/cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive.h	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive.h	2024-12-21 12:10:51.542827241 +0400
+@@ -95,9 +95,9 @@
+ #endif
+ 
+ /* Large file support for Android */
+-#if defined(__LIBARCHIVE_BUILD) && defined(__ANDROID__)
+-#include "android_lf.h"
+-#endif
++//#if defined(__LIBARCHIVE_BUILD) && defined(__ANDROID__)
++//#include "android_lf.h"
++//#endif
+ 
+ /*
+  * On Windows, define LIBARCHIVE_STATIC if you're building or using a
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_entry.h cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_entry.h
+--- zz/cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_entry.h	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_entry.h	2024-12-21 12:11:28.550827227 +0400
+@@ -97,9 +97,9 @@
+ #endif
+ 
+ /* Large file support for Android */
+-#if defined(__LIBARCHIVE_BUILD) && defined(__ANDROID__)
+-#include "android_lf.h"
+-#endif
++//#if defined(__LIBARCHIVE_BUILD) && defined(__ANDROID__)
++//#include "android_lf.h"
++//#endif
+ 
+ /*
+  * On Windows, define LIBARCHIVE_STATIC if you're building or using a
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_read_disk_posix.c cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_read_disk_posix.c
+--- zz/cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_read_disk_posix.c	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_read_disk_posix.c	2024-12-21 12:13:02.526827191 +0400
+@@ -2075,11 +2075,11 @@
+ 		return (close(fd));
+ #endif
+ 	close(fd);
+-#if defined(HAVE_FUTIMESAT)
++#if defined(HAVE_FUTIMESAT) && !defined(__BIONIC__)
+ 	if (futimesat(tree_current_dir_fd(t), rt->name, times) == 0)
+ 		return (0);
+ #endif
+-#ifdef HAVE_LUTIMES
++#if defined(HAVE_LUTIMES) && !defined(__BIONIC__)
+ 	if (lutimes(rt->name, times) != 0)
+ #else
+ 	if (AE_IFLNK != rt->filetype && utimes(rt->name, times) != 0)
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_string.c cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_string.c
+--- zz/cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_string.c	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_string.c	2024-12-21 12:13:57.838827170 +0400
+@@ -426,7 +426,7 @@
+ #if HAVE_LOCALE_CHARSET && !defined(__APPLE__)
+ 	/* locale_charset() is broken on Mac OS */
+ 	return locale_charset();
+-#elif HAVE_NL_LANGINFO
++#elif HAVE_NL_LANGINFO && !defined(__BIONIC__)
+ 	return nl_langinfo(CODESET);
+ #else
+ 	return "";
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_write_set_format_zip.c cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_write_set_format_zip.c
+--- zz/cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_write_set_format_zip.c	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibarchive/libarchive/archive_write_set_format_zip.c	2024-12-21 12:15:01.330827145 +0400
+@@ -650,7 +650,7 @@
+ 			if (strcmp(archive_string_conversion_charset_name(
+ 					zip->opt_sconv), "UTF-8") == 0)
+ 				zip->entry_flags |= ZIP_ENTRY_FLAG_UTF8_NAME;
+-#if HAVE_NL_LANGINFO
++#if HAVE_NL_LANGINFO && !defined(__BIONIC__)
+ 		} else if (strcmp(nl_langinfo(CODESET), "UTF-8") == 0) {
+ 			zip->entry_flags |= ZIP_ENTRY_FLAG_UTF8_NAME;
+ #endif
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibuv/CMakeLists.txt cmake-3.31.2/Utilities/cmlibuv/CMakeLists.txt
+--- zz/cmake-3.31.2/Utilities/cmlibuv/CMakeLists.txt	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibuv/CMakeLists.txt	2024-12-21 13:42:49.530825136 +0400
+@@ -216,6 +216,26 @@
+     )
+ endif()
+ 
++if(CMAKE_SYSTEM_NAME STREQUAL "Android")
++  list(APPEND uv_libraries dl)
++  list(APPEND uv_headers
++    include/uv/linux.h
++    )
++  list(APPEND uv_defines _GNU_SOURCE)
++  list(APPEND uv_sources
++    src/unix/epoll.c
++    src/unix/linux-core.c
++    src/unix/linux-inotify.c
++    src/unix/linux-syscalls.c
++    src/unix/linux-syscalls.h
++    src/unix/pthread-fixes.c
++    src/unix/procfs-exepath.c
++    src/unix/proctitle.c
++    src/unix/sysinfo-loadavg.c
++    src/unix/sysinfo-memory.c
++    )
++endif()
++
+ if(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+   list(APPEND uv_libraries
+     kvm
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibuv/src/strscpy.c cmake-3.31.2/Utilities/cmlibuv/src/strscpy.c
+--- zz/cmake-3.31.2/Utilities/cmlibuv/src/strscpy.c	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibuv/src/strscpy.c	2024-12-21 13:31:33.170825394 +0400
+@@ -22,6 +22,10 @@
+ #include "strscpy.h"
+ #include <limits.h>  /* SSIZE_MAX */
+ 
++//#if defined(__BIONIC__) || defined(__ANDROID__)
++#define SSIZE_MAX SIZE_MAX
++//#endif
++
+ ssize_t uv__strscpy(char* d, const char* s, size_t n) {
+   size_t i;
+ 
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibuv/src/unix/core.c cmake-3.31.2/Utilities/cmlibuv/src/unix/core.c
+--- zz/cmake-3.31.2/Utilities/cmlibuv/src/unix/core.c	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibuv/src/unix/core.c	2024-12-21 12:05:21.338827367 +0400
+@@ -1057,7 +1057,7 @@
+ 
+ 
+ int uv__dup2_cloexec(int oldfd, int newfd) {
+-#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__linux__)
++#if (defined(__FreeBSD__) || defined(__NetBSD__) || defined(__linux__)) && !defined(__BIONIC__)
+   int r;
+ 
+   r = dup3(oldfd, newfd, O_CLOEXEC);
+@@ -1407,7 +1407,7 @@
+ 
+ 
+ int uv_cpumask_size(void) {
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if (defined(__linux__) || defined(__FreeBSD__)) && !defined(__BIONIC__)
+   return CPU_SETSIZE;
+ #else
+   return UV_ENOTSUP;
+@@ -1644,7 +1644,7 @@
+ 
+ 
+ unsigned int uv_available_parallelism(void) {
+-#ifdef __linux__
++#if defined(__linux__) && !defined(__BIONIC__)
+   cpu_set_t set;
+   long rc;
+ 
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibuv/src/unix/fs.c cmake-3.31.2/Utilities/cmlibuv/src/unix/fs.c
+--- zz/cmake-3.31.2/Utilities/cmlibuv/src/unix/fs.c	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibuv/src/unix/fs.c	2024-12-11 09:58:07.048331565 +0400
+@@ -46,6 +46,10 @@
+ #include <fcntl.h>
+ #include <poll.h>
+ 
++#ifdef __BIONIC__
++#define SSIZE_MAX SIZE_MAX
++#endif
++
+ #if defined(__DragonFly__)        ||                                      \
+     defined(__FreeBSD__)          ||                                      \
+     defined(__FreeBSD_kernel__)   ||                                      \
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibuv/src/unix/linux-core.c cmake-3.31.2/Utilities/cmlibuv/src/unix/linux-core.c
+--- zz/cmake-3.31.2/Utilities/cmlibuv/src/unix/linux-core.c	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibuv/src/unix/linux-core.c	2024-12-21 13:35:51.302825295 +0400
+@@ -43,7 +43,7 @@
+ #include <fcntl.h>
+ #include <time.h>
+ 
+-#define HAVE_IFADDRS_H 1
++//#define HAVE_IFADDRS_H 1
+ 
+ # if defined(__ANDROID_API__) && __ANDROID_API__ < 24
+ # undef HAVE_IFADDRS_H
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibuv/src/unix/pipe.c cmake-3.31.2/Utilities/cmlibuv/src/unix/pipe.c
+--- zz/cmake-3.31.2/Utilities/cmlibuv/src/unix/pipe.c	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibuv/src/unix/pipe.c	2024-12-21 12:06:19.090827345 +0400
+@@ -384,7 +384,7 @@
+ int uv_pipe(uv_os_fd_t fds[2], int read_flags, int write_flags) {
+   uv_os_fd_t temp[2];
+   int err;
+-#if defined(__FreeBSD__) || defined(__linux__)
++#if (defined(__FreeBSD__) || defined(__linux__)) && !defined(__BIONIC__)
+   int flags = O_CLOEXEC;
+ 
+   if ((read_flags & UV_NONBLOCK_PIPE) && (write_flags & UV_NONBLOCK_PIPE))
+diff -Nur zz/cmake-3.31.2/Utilities/cmlibuv/src/unix/process.c cmake-3.31.2/Utilities/cmlibuv/src/unix/process.c
+--- zz/cmake-3.31.2/Utilities/cmlibuv/src/unix/process.c	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/Utilities/cmlibuv/src/unix/process.c	2024-12-21 12:08:50.962827287 +0400
+@@ -69,7 +69,7 @@
+ #endif
+ 
+ #ifndef CMAKE_BOOTSTRAP
+-#if defined(__linux__)
++#if defined(__linux__) && !defined(__BIONIC__)
+ # define uv__cpu_set_t cpu_set_t
+ #elif defined(__FreeBSD__)
+ # include <sys/param.h>
+@@ -297,7 +297,7 @@
+   int fd;
+   int n;
+ #ifndef CMAKE_BOOTSTRAP
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if (defined(__linux__) || defined(__FreeBSD__)) && !defined(__BIONIC__)
+   int r;
+   int i;
+   int cpumask_size;
+@@ -411,7 +411,7 @@
+     uv__write_errno(error_fd);
+ 
+ #ifndef CMAKE_BOOTSTRAP
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if (defined(__linux__) || defined(__FreeBSD__)) && !defined(__BIONIC__)
+   if (options->cpumask != NULL) {
+     cpumask_size = uv_cpumask_size();
+     assert(options->cpumask_size >= (size_t)cpumask_size);
+diff -Nur zz/cmake-3.31.2/bootstrap cmake-3.31.2/bootstrap
+--- zz/cmake-3.31.2/bootstrap	2024-12-05 17:42:47.000000000 +0400
++++ cmake-3.31.2/bootstrap	2024-12-21 10:38:22.146829358 +0400
+@@ -1783,7 +1783,11 @@
+       ;;
+     *Linux*)
+       uv_c_flags="${uv_c_flags} -D_GNU_SOURCE"
+-      libs="${libs} -ldl -lrt"
++      if [ "$(uname -o)" = "Android" ]; then
++        libs="${libs} -ldl"
++      else
++        libs="${libs} -ldl -lrt"
++      fi
+       ;;
+     *kFreeBSD*)
+       libs="${libs} -lkvm -lfreebsd-glue"
