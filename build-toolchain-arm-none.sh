@@ -7,6 +7,10 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+ARM_INST=$PREFIX
+
+unset PREFIX
+
 # Check that ARM_INST is defined
 if [ -z "${ARM_INST-}" ]; then
     echo "ARM_INST environment variable is not defined."
@@ -41,7 +45,7 @@ export PATH="$PATH:$INSTALL_PATH/bin"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN)}"
 JOBS="${JOBS:-1}" # If getconf returned nothing, default to 1
 
-JOBS=1
+JOBS=3
 
 # GCC configure arguments to use system GMP/MPC/MFPF
 GCC_CONFIGURE_ARGS=()
@@ -272,7 +276,13 @@ EOF
     --enable-multilib \
     --without-system-zlib \
     --without-zstd \
-    --disable-werror
+    --disable-werror \
+    CPPFLAGS='-O2 -D__ANDROID_API__=29' \
+    CFLAGS='-O2 -D__ANDROID_API__=29' \
+    CXXFLAGS='-O2 -D__ANDROID_API__=29' \
+    CC="gcc-14" \
+    CXX="g++-14" \
+    CPP="cpp-14"
 
     touch .configured
 fi
@@ -283,14 +293,14 @@ if [ ! -e .compiled ]; then
     touch .compiled
 fi
 
-if [ ! -e .installed ]; then
-    make install-strip
-
-    touch .installed
-fi
+#if [ ! -e .installed ]; then
+#    make install-strip
+#
+#    touch .installed
+#fi
 
 if [ ! -e .packed ]; then
-    PKG=${ARM_TARGET}-binutils-cctools
+    PKG=${ARM_TARGET}-binutils
     PKG_VERSION=$BINUTILS_V
     PKG_SUBVERSION=
     PKG_URL="https://mirror.kumi.systems/gnu/binutils/binutils-${PKG_VERSION}.tar.xz"
@@ -301,6 +311,9 @@ if [ ! -e .packed ]; then
 
     make install-strip DESTDIR=${TMPINST_DIR}/${PKG}
 
+    rm -rf ${TMPINST_DIR}/${PKG}/data/data/com.termux/files/usr/lib/bfd-plugins
+    rm -rf ${TMPINST_DIR}/${PKG}/data/data/com.termux/files/usr/share/info
+
     pushd ${TMPINST_DIR}/${PKG}/${TOOLCHAIN_INST}/${ARM_TARGET}/bin
     for f in $(find . -type f -exec basename {} \;); do
         ln -sf ../${ARM_TARGET}/bin/$f ../../bin/${ARM_TARGET}-$f
@@ -310,6 +323,8 @@ if [ ! -e .packed ]; then
     popd
 
     packing
+
+    dpkg -i ${REPO_DIR}/${PKG}_${PKG_VERSION}${PKG_SUBVERSION}_$(uname -m).deb
 
     touch .packed
 fi
@@ -354,7 +369,10 @@ EOF
     --disable-werror \
     --without-system-zlib \
     --without-zstd \
-    --enable-host-pie
+    --enable-host-pie \
+    CC="gcc-14 -D__ANDROID_API__=29" \
+    CXX="g++-14 -D__ANDROID_API__=29" \
+    CPP="cpp-14 -D__ANDROID_API__=29"
 
     touch .configured
 fi
@@ -407,14 +425,8 @@ if [ ! -e .compiled ]; then
     touch .compiled
 fi
 
-if [ ! -e .installed ]; then
-    make install
-
-    touch .installed
-fi
-
 if [ ! -e .packed ]; then
-    PKG=${ARM_TARGET}-newlib-cctools
+    PKG=${ARM_TARGET}-newlib
     PKG_VERSION=$NEWLIB_V
     PKG_SUBVERSION=
     PKG_URL="https://sourceware.org/pub/newlib/newlib-${PKG_VERSION}.tar.gz"
@@ -424,8 +436,11 @@ if [ ! -e .packed ]; then
     PKG_DEPS=""
 
     make install DESTDIR=${TMPINST_DIR}/${PKG}
+    rm -rf ${TMPINST_DIR}/${PKG}/data/data/com.termux/files/usr/share/info
 
     packing
+
+    dpkg -i ${REPO_DIR}/${PKG}_${PKG_VERSION}${PKG_SUBVERSION}_$(uname -m).deb
 
     touch .packed
 fi
@@ -443,25 +458,30 @@ if [ "$ARM_BUILD" == "$ARM_HOST" ]; then
         touch .gcc_compiled_target
     fi
 
-    if [ ! -e .gcc_installed_target ]; then
-        make install-strip
-
-        touch .gcc_installed_target
-    fi
+#    if [ ! -e .gcc_installed_target ]; then
+#        make install-strip
+#
+#        touch .gcc_installed_target
+#    fi
 
     if [ ! -e .packed ]; then
-        PKG=${ARM_TARGET}-gcc-cctools
+        PKG=${ARM_TARGET}-gcc
         PKG_VERSION=$GCC_V
         PKG_SUBVERSION=
         PKG_URL="http://mirrors.concertpass.com/gcc/releases/gcc-${PKG_VERSION}/gcc-${PKG_VERSION}.tar.xz"
         PKG_MAINTAINER="sashz <sashz@pdaXrom.org>"
         PKG_HOME="https://gcc.gnu.org/"
         PKG_DESC="The GNU Compiler Collection for ${ARM_TARGET}"
-        PKG_DEPS="${ARM_TARGET}-binutils-cctools, ${ARM_TARGET}-newlib-cctools"
+        PKG_DEPS="${ARM_TARGET}-binutils, ${ARM_TARGET}-newlib"
 
         make install-strip DESTDIR=${TMPINST_DIR}/${PKG}
+        rm -rf ${TMPINST_DIR}/${PKG}/data/data/com.termux/files/usr/share/info
+        rm -rf ${TMPINST_DIR}/${PKG}/data/data/com.termux/files/usr/share/man/man7
+        rm -rf ${TMPINST_DIR}/${PKG}/data/data/com.termux/files/usr/lib64/libcc1.*
 
         packing
+
+        dpkg -i ${REPO_DIR}/${PKG}_${PKG_VERSION}${PKG_SUBVERSION}_$(uname -m).deb
 
         touch .packed
     fi
